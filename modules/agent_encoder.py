@@ -57,14 +57,6 @@ class AgentEncoder(nn.Module):
         ego_vel_history = data["history_trajectories_speed"] # [B, N_h, 3]
 
         B, N_obj = valid_mask.shape
-        print("position", position.shape) # [B, N_obj, 4, 4]
-        print("category", category.shape) # [B, N_obj]
-        print("velocity", velocity.shape) # [B, N_obj, 3]
-        print("shape", shape.shape) # [B, N_obj, 4, 2]
-        print("N_obj", N_obj) # [B, N_obj, 4, 2]
-        print("valid_mask", valid_mask.shape) # [B, N_obj]
-        print("ego_pos_history", ego_pos_history.shape) # [B, N_h, 4, 4]
-        print("ego_vel_history", ego_vel_history.shape) # [B, N_h, 3]
         objs_feature  = torch.cat(
             [position.view(B, N_obj, -1), velocity, shape.view(B, N_obj, -1)], dim=-1
         ) #[B, N_obj, 4*4 + 3 + 4*2]

@@ -342,6 +342,7 @@ class CacheDataset(Dataset):
         ]
         if len(nearby_road_ids) > self.max_map_element_num:
             nearby_road_ids = nearby_road_ids[:self.max_map_element_num]
+            is_road_in_route = is_road_in_route[:self.max_map_element_num]
 
         data["boundary_left_boundaries"] = torch.zeros([self.max_map_element_num, self.lane_point_number, 2], dtype=torch.float32)
         data["boundary_right_boundaries"] = torch.zeros([self.max_map_element_num, self.lane_point_number, 2], dtype=torch.float32)
