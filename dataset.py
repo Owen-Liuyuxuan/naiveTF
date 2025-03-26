@@ -16,8 +16,8 @@ Json file structure:
     ],
     history_trajectories_transform_list: [N_h, 4, 4], past trajectory of the vehicle in the world frame. N=10,
     future_trajectories_transform_list: [N_f, 4, 4], future trajectory of the vehicle in the world frame. N=30,
-    history_trajectories_speed_list: [N_h, 3], past speed of the vehicle in the world frame. N=10,
-    future_trajectories_speed_list: [N_f, 3], future speed of the vehicle in the world frame. N=30,
+    history_trajectories_speed_list: [N_h, 1], past speed of the vehicle in the world frame. N=10,
+    future_trajectories_speed_list: [N_f, 1], future speed of the vehicle in the world frame. N=30,
     routes: [], list of lanelet2 id that is route of the vehicle in the neighborhood.
     nearby_lanelets_ids: [], list of lanelet2 id that is nearby the vehicle in the neighborhood.
   }
