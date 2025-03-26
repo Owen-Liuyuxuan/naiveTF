@@ -37,6 +37,7 @@ class AgentEncoder(nn.Module):
                 nn.Linear(10 * (16 + 1), dim),
                 nn.LayerNorm(dim),
                 nn.ReLU(),
+                nn.Dropout(state_dropout),
                 nn.Linear(dim, dim),
             )
 

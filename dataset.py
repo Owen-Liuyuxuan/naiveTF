@@ -52,6 +52,43 @@ def automatic_find_projector_yaml(map_path):
     else:
         return None
 
+LANELET_TYPE_MAPPING = {
+    "road": 0,
+    "private": 1,
+    "highway": 2,
+    "play_street": 3,
+    "emergency_lane": 4,
+    "bus_lane": 5,
+    "bicycle_lane": 6,
+    "exit": 7,
+    "walkway": 8,
+    "shared_walkway": 9,
+    "crosswalk": 10,
+    "stairs": 11,
+    "road_shoulder": 12,
+    "pedestrian_lane": 13,
+    "bicycle_lane": 14,
+    "none": 15,
+}
+
+LANELET_LOCATION_MAPPING = {
+    "urban": 0,
+    "nonurban": 1,
+    "private": 2,
+    "none": 3
+}
+
+LANELET_TURN_DIRECTION_MAPPING =  {
+    "straight": 0,
+    "left": 1,
+    "right": 2
+}
+    
+def attribute_or(lanelet, key, default):
+    if key in lanelet.attributes:
+        return lanelet.attributes[key]
+    return default
+
 def get_lanelet2_projector(projector_info: MapProjectorInfo):
     """
     プロジェクタ情報に基づいて、適切なlanelet2のプロジェクタを返します。
@@ -271,19 +308,20 @@ class CacheDataset(Dataset):
         """For each road lanelet in the map, resample the left and right boundary to a fix shape and generate the centerline"""
         self.resampled_lanelets = dict()
         for lanelet in self.map_object.laneletLayer:
-            if lanelet.attributes["subtype"] == "road":
-                self.resampled_lanelets[int(lanelet.id)] = dict()
-                left_length = lanelet2.geometry.length(lanelet.leftBound)
-                right_length = lanelet2.geometry.length(lanelet.rightBound)
-                length = max(left_length, right_length)
-                resolution = length / (self.lane_point_number - 1) + 0.0001 # make sure the distance/resolution == self.lane_point_number
-                right_bound = utilities.getRightBoundWithOffset(lanelet, 0.0, resolution)
-                left_bound = utilities.getLeftBoundWithOffset(lanelet, 0.0, resolution)
-                center_line = utilities.generateFineCenterline(lanelet, resolution)
+            self.resampled_lanelets[int(lanelet.id)] = dict()
+            left_length = lanelet2.geometry.length(lanelet.leftBound)
+            right_length = lanelet2.geometry.length(lanelet.rightBound)
+            length = max(left_length, right_length)
+            if length < 0.001:
+                continue
+            resolution = length / (self.lane_point_number - 1) + 0.0001 # make sure the distance/resolution == self.lane_point_number
+            right_bound = utilities.getRightBoundWithOffset(lanelet, 0.0, resolution)
+            left_bound = utilities.getLeftBoundWithOffset(lanelet, 0.0, resolution)
+            center_line = utilities.generateFineCenterline(lanelet, resolution)
 
-                self.resampled_lanelets[int(lanelet.id)]["right_bound"] = right_bound
-                self.resampled_lanelets[int(lanelet.id)]["left_bound"] = left_bound
-                self.resampled_lanelets[int(lanelet.id)]["center_line"] = center_line
+            self.resampled_lanelets[int(lanelet.id)]["right_bound"] = right_bound
+            self.resampled_lanelets[int(lanelet.id)]["left_bound"] = left_bound
+            self.resampled_lanelets[int(lanelet.id)]["center_line"] = center_line
 
     
     def __getitem__(self, index):
@@ -335,7 +373,7 @@ class CacheDataset(Dataset):
         data["future_trajectories_speed"] = torch.tensor(frame["future_trajectories_speed_list"])           # [N_f, 3]
 
         nearby_road_ids = [
-            lanelet_idx for lanelet_idx in frame["nearby_lanelets_ids"] if self.map_object.laneletLayer.get(lanelet_idx).attributes["subtype"] == "road"
+            lanelet_idx for lanelet_idx in frame["nearby_lanelets_ids"] if int(lanelet_idx) in self.resampled_lanelets
         ]
         is_road_in_route = [
             bool(lanelet_idx in frame["routes"]) for lanelet_idx in nearby_road_ids
@@ -348,16 +386,48 @@ class CacheDataset(Dataset):
         data["boundary_right_boundaries"] = torch.zeros([self.max_map_element_num, self.lane_point_number, 2], dtype=torch.float32)
         data["boundary_in_route"] = torch.zeros([self.max_map_element_num], dtype=torch.bool)
         data["boundary_mask"] = torch.zeros([self.max_map_element_num, self.lane_point_number], dtype=torch.bool)
+        data["lanelet_subtypes"] = torch.zeros([self.max_map_element_num], dtype=torch.long) 
+        data["lanelet_locations"] = torch.zeros([self.max_map_element_num], dtype=torch.long) 
+        data["lanelet_turn_directions"] = torch.zeros([self.max_map_element_num], dtype=torch.long) 
+        data["lanelet_speed_limit"] = torch.zeros([self.max_map_element_num], dtype=torch.float32)
+
+
 
 
         data["boundary_mask"][0:len(nearby_road_ids)] = True
+        
+        
+        data["boundary_in_route"][0:len(nearby_road_ids)] = torch.tensor(is_road_in_route, dtype=torch.bool)
+        data["lanelet_subtypes"][0:len(nearby_road_ids)] = torch.tensor(
+            [
+                LANELET_TYPE_MAPPING[attribute_or(self.map_object.laneletLayer.get(lanelet_idx), "subtype", "road")]
+                for lanelet_idx in nearby_road_ids]
+            , dtype=torch.long
+        )
+        data["lanelet_locations"][0:len(nearby_road_ids)] = torch.tensor(
+            [
+                LANELET_LOCATION_MAPPING[attribute_or(self.map_object.laneletLayer.get(lanelet_idx), "location", "urban")]
+                for lanelet_idx in nearby_road_ids]
+            , dtype=torch.long
+        )
+        data["lanelet_turn_directions"][0:len(nearby_road_ids)] = torch.tensor(
+            [
+                LANELET_TURN_DIRECTION_MAPPING[attribute_or(self.map_object.laneletLayer.get(lanelet_idx), "turn_direction", "straight")]
+                for lanelet_idx in nearby_road_ids]
+                , dtype=torch.long
+                )
+        data["lanelet_speed_limit"][0:len(nearby_road_ids)] = torch.tensor(
+            [
+                float(attribute_or(self.map_object.laneletLayer.get(lanelet_idx), "speed_limit", "50")) / 100.0 # normalized to [0, 1]
+                for lanelet_idx in nearby_road_ids]
+            , dtype=torch.float32
+        )
         data["boundary_left_boundaries"][0:len(nearby_road_ids)] = torch.tensor(
             [[(p.x, p.y) for p in self.resampled_lanelets[int(lanelet_idx)]["left_bound"]] for lanelet_idx in nearby_road_ids]
         )
         data["boundary_right_boundaries"][0:len(nearby_road_ids)] = torch.tensor(
             [[(p.x, p.y) for p in self.resampled_lanelets[int(lanelet_idx)]["right_bound"]] for lanelet_idx in nearby_road_ids]
         )
-        data["boundary_in_route"][0:len(nearby_road_ids)] = torch.tensor(is_road_in_route, dtype=torch.bool)
         
         
         ego_transform = data["future_trajectories_transform"][0] # [4, 4]
