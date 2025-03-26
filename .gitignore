@@ -1,0 +1,7 @@
+*.pyc
+__pycache__
+outputs
+visualization_outputs
+*.pth
+events.out.tfevents.*
+
